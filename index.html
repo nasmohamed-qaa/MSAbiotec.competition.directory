@@ -579,12 +579,12 @@
     <h1 id="authTitle">Competitions Dashboard</h1>
     <p>Sign in with your authorized account to access the competition directory, participant records, achievements, and reminders.</p>
     <form id="authForm">
-      <label>Email address<input id="authEmail" type="email" autocomplete="username" required placeholder="you@organization.org"></label>
+      <label>Username<input id="authUsername" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required minlength="3" maxlength="32" pattern="[A-Za-z0-9._-]{3,32}" placeholder="Enter your username"></label>
       <label>Password<input id="authPassword" type="password" autocomplete="current-password" required placeholder="Enter your password"></label>
       <button id="authSubmit" type="submit">Sign in securely</button>
     </form>
     <div id="authMessage" role="status" aria-live="polite"></div>
-    <p id="authFoot">Accounts are created by the administrator in Firebase Console. Public self-registration is disabled.</p>
+    <p id="authFoot">Accounts are created by the administrator. Enter your assigned username and password. Public self-registration is disabled.</p>
   </section>
 </div>
 <div id="authUserBar"><span id="authUserLabel">Signed in</span><button id="authSignOut" type="button">Sign out</button></div>
@@ -1546,8 +1546,8 @@ function checkEventReminders(){if(!('Notification' in window)||Notification.perm
 
 
 <script type="module">
-  // Create a separate Firebase project, enable Email/Password Authentication and Firestore,
-  // then replace every placeholder below with the Web app config from Firebase Console.
+  // Enable Email/Password Authentication and Firestore in the configured Firebase project.
+  // The login form accepts usernames and maps them to internal email-shaped Firebase Auth IDs.
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
   import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js';
   import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
@@ -1561,6 +1561,9 @@ function checkEventReminders(){if(!('Notification' in window)||Notification.perm
     appId: '1:908879887179:web:cb917e93ada69a538446ce'
   };
   const configured = Object.values(firebaseConfig).every(v => typeof v === 'string' && v && !v.startsWith('REPLACE_'));
+  // Firebase Email/Password Auth requires an email-shaped identifier. The UI accepts usernames and maps each one to this internal alias.
+  const USERNAME_EMAIL_DOMAIN = 'competition-directory-bio.firebaseapp.com';
+  const usernameToAuthEmail = username => `${username.trim().toLowerCase()}@${USERNAME_EMAIL_DOMAIN}`;
   const gate = document.getElementById('authGate');
   const form = document.getElementById('authForm');
   const message = document.getElementById('authMessage');
@@ -1586,9 +1589,14 @@ function checkEventReminders(){if(!('Notification' in window)||Notification.perm
         e.preventDefault();
         submit.disabled = true; showError('Signing in…');
         try {
-          await signInWithEmailAndPassword(auth, document.getElementById('authEmail').value.trim(), document.getElementById('authPassword').value);
+          const username = document.getElementById('authUsername').value.trim().toLowerCase();
+          if (!/^[a-z0-9._-]{3,32}$/.test(username)) {
+            showError('Use a username with 3–32 characters: letters, numbers, dots, underscores, or hyphens.');
+            return;
+          }
+          await signInWithEmailAndPassword(auth, usernameToAuthEmail(username), document.getElementById('authPassword').value);
         } catch (err) {
-          showError(err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found' ? 'Email or password is incorrect.' : 'Could not sign in. Check your connection and Firebase setup.');
+          showError(err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found' ? 'Username or password is incorrect.' : 'Could not sign in. Check your connection and Firebase setup.');
         } finally { submit.disabled = false; }
       });
       document.getElementById('authSignOut').addEventListener('click', () => signOut(auth));
@@ -1627,7 +1635,8 @@ function checkEventReminders(){if(!('Notification' in window)||Notification.perm
           if (typeof window.renderQuarterlyReport === 'function') window.renderQuarterlyReport();
           window.competitionCloudReady = true;
           gate.hidden = true; userBar.style.display = 'flex';
-          document.getElementById('authUserLabel').textContent = `Signed in: ${user.email || 'authorized user'}`;
+          const signedInName = (user.email || '').toLowerCase().endsWith('@' + USERNAME_EMAIL_DOMAIN) ? user.email.slice(0, user.email.lastIndexOf('@')) : 'authorized user';
+          document.getElementById('authUserLabel').textContent = `Signed in: ${signedInName}`;
           document.body.style.overflow = '';
           showError('');
         } catch (err) {
