@@ -722,7 +722,7 @@
   <section class="tab-panel" id="quarterlyReportsPanel">
     <div class="feature-panel">
       <h3>📊 Quarterly competition report</h3>
-      <p class="help">Review competitions whose registration opens or closes during a selected quarter, alongside competitions that commence during that same quarter. The report uses the actual dates saved in each competition record, not the manually assigned directory quarter.</p>
+      <p class="help">Review competitions whose registration opens or closes during a selected quarter, alongside competitions that commence during that same quarter. By default, this report opens to the current calendar year and quarter and advances automatically when a new quarter begins. Previous years and their saved records remain available. The report uses the actual dates saved in each competition record, not the manually assigned directory quarter.</p>
       <div class="report-controls">
         <label>Year<select id="reportYear"></select></label>
         <label>Quarter<select id="reportQuarter"><option value="1">Q1 · January–March</option><option value="2">Q2 · April–June</option><option value="3">Q3 · July–September</option><option value="4">Q4 · October–December</option></select></label>
@@ -1472,10 +1472,30 @@ function inSelectedQuarter(dateString, year, quarter){
 }
 function initReportYears(){
   const select=document.getElementById('reportYear'); if(!select) return;
+  // Always include the live calendar year, even if there are no records dated in it yet.
   const years=new Set([getToday().getFullYear()]);
   DATA.forEach(c=>['regOpens','regDeadline','eventStart','eventEnd'].forEach(k=>{if(c[k]){const d=parseDate(c[k]);if(d&&!Number.isNaN(d.getTime()))years.add(d.getFullYear());}}));
   const old=select.value; select.innerHTML=[...years].sort((a,b)=>b-a).map(y=>`<option value="${y}">${y}</option>`).join('');
   if([...select.options].some(o=>o.value===old)) select.value=old; else select.value=String(getToday().getFullYear());
+}
+function quarterForDate(date){ return Math.floor(date.getMonth()/3)+1; }
+function advanceQuarterReportOnCalendarChange(previousDate, currentDate){
+  const yearSelect=document.getElementById('reportYear');
+  const quarterSelect=document.getElementById('reportQuarter');
+  if(!yearSelect||!quarterSelect) return;
+  const previousYear=previousDate.getFullYear();
+  const previousQuarter=quarterForDate(previousDate);
+  const selectedYear=Number(yearSelect.value||previousYear);
+  const selectedQuarter=Number(quarterSelect.value||previousQuarter);
+  // If the user was viewing the live quarter, keep them following the calendar.
+  // If they had intentionally selected a historical quarter, leave that selection alone.
+  const wasFollowingLiveQuarter=selectedYear===previousYear && selectedQuarter===previousQuarter;
+  if(wasFollowingLiveQuarter){
+    initReportYears();
+    yearSelect.value=String(currentDate.getFullYear());
+    quarterSelect.value=String(quarterForDate(currentDate));
+  }
+  renderQuarterlyReport();
 }
 function reportTable(title, rows, dateKey, dateLabel){
   const heading=`<div class="section-head"><h2>${title}</h2><span class="hint">${rows.length} competition${rows.length===1?'':'s'}</span></div>`;
@@ -1532,10 +1552,12 @@ function checkEventReminders(){if(!('Notification' in window)||Notification.perm
   setInterval(()=>{
     const fresh = getToday();
     if(fresh.getTime() !== TODAY.getTime()){
+      const previousDate = TODAY;
       TODAY = fresh;
       updateLiveDateTag();
       renderTimeline();
       render(); checkEventReminders(); notifyOpeningsToday(false); renderReminderQueue();
+      advanceQuarterReportOnCalendarChange(previousDate, fresh);
     } else {
       checkEventReminders(); renderDeadlineSidebar();
       renderDeadlineAlerts();
